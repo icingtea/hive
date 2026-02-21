@@ -1,0 +1,12 @@
+[submodule "hive-mock-pipeline/application-agent"]
+	path = hive-mock-pipeline/application-agent
+	url = https://github.com/Samsyet/application-agent
+[submodule "hive-mock-pipeline/risk-agent"]
+	path = hive-mock-pipeline/risk-agent
+	url = https://github.com/Samsyet/risk-agent
+[submodule "hive-mock-pipeline/credit-agent"]
+	path = hive-mock-pipeline/credit-agent
+	url = https://github.com/Samsyet/credit-agent
+[submodule "hive-mock-pipeline/identity-agent"]
+	path = hive-mock-pipeline/identity-agent
+	url = https://github.com/Samsyet/identity-agent
