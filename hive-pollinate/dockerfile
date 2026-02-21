@@ -1,5 +1,6 @@
 FROM python:3.11-slim
 
+# system deps
 RUN apt-get update && \
     apt-get install -y --no-install-recommends git ca-certificates && \
     rm -rf /var/lib/apt/lists/*
@@ -11,4 +12,17 @@ RUN git clone ${REPO_URL} repo
 
 WORKDIR /app/repo
 
-CMD ["python", "agent.py"]
+# install python deps if present
+RUN if [ -f requirements.txt ]; then \
+        pip install --no-cache-dir -r requirements.txt; \
+    fi
+
+# runtime command chooser
+CMD ["/bin/sh", "-c", "\
+if [ -f streamlit-agent.py ]; then \
+    streamlit run streamlit-agent.py --server.address=0.0.0.0 --server.port=8501; \
+elif [ -f agent.py ]; then \
+    python agent.py; \
+else \
+    echo 'No agent file found.' && exit 1; \
+fi"]
