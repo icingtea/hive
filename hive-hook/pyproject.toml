@@ -1,0 +1,22 @@
+[project]
+name = "hive-hook"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [{ name = "lalitm1004", email = "lalitm1004@gmail.com" }]
+requires-python = ">=3.9"
+dependencies = [
+    "fastapi>=0.128.8",
+    "httpx>=0.28.1",
+    "langgraph>=0.6.11",
+    "pydantic>=2.12.5",
+    "python-dotenv>=1.2.1",
+    "uvicorn>=0.39.0",
+]
+
+[project.scripts]
+hive-hook = "hive_hook:main"
+
+[build-system]
+requires = ["uv_build>=0.8.13,<0.9.0"]
+build-backend = "uv_build"
