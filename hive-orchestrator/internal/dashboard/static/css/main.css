@@ -297,6 +297,26 @@ code { font-family: var(--font-mono); }
 .badge--inactive { background: var(--gray-bg);   color: var(--gray-text);  border-color: var(--gray-border); }
 .badge--inactive .badge-dot { background: var(--text-subtle); }
 
+/* ── Section header ────────────────────────────────────────────────────────── */
+.section-header { display: flex; align-items: baseline; gap: 8px; margin-bottom: 10px; margin-top: 4px; }
+.section-title { font-size: 11px; font-weight: 600; color: var(--text-subtle); text-transform: uppercase; letter-spacing: 0.09em; }
+.section-sub { font-size: 11px; color: var(--text-subtle); font-family: var(--font-mono); }
+
+/* ── Heartbeat grid ────────────────────────────────────────────────────────── */
+.hb-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
+  margin-bottom: 16px; animation: fade-up 0.28s var(--ease-out) both;
+}
+.hb-card {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg);
+  padding: 14px 16px; display: flex; flex-direction: column; gap: 4px;
+  box-shadow: var(--shadow-xs); transition: background 0.2s, border-color 0.2s;
+}
+.hb-card--skeleton { padding: 10px; }
+.hb-label { font-size: 10px; font-weight: 600; color: var(--text-subtle); text-transform: uppercase; letter-spacing: 0.09em; }
+.hb-value { font-size: 15px; font-weight: 600; letter-spacing: -0.03em; color: var(--text); line-height: 1.3; margin-top: 2px; }
+.hb-waiting { font-size: 13px; color: var(--text-muted); padding: 20px 0; grid-column: 1/-1; text-align: center; font-style: italic; }
+
 /* ── Tag ───────────────────────────────────────────────────────────────────── */
 .tag { display: inline-block; padding: 1px 6px; background: var(--bg-subtle); border: 1px solid var(--border); border-radius: var(--radius-xs); font-size: 11px; color: var(--text-muted); width: fit-content; transition: background 0.2s, border-color 0.2s; }
 

@@ -78,6 +78,20 @@
   </div>
 </div>
 
+{{if eq (print .Deployment.Status) "running"}}
+<!-- Heartbeat telemetry — polls every 5s -->
+<div class="section-header">
+  <span class="section-title">Telemetry</span>
+  <span class="section-sub">live · 5s interval</span>
+</div>
+<div class="hb-grid" id="hb-grid"
+  hx-get="/dashboard/partials/heartbeat/{{.Deployment.ID}}"
+  hx-trigger="load, every 5s"
+  hx-swap="outerHTML">
+  {{range $i := iter 6}}<div class="hb-card hb-card--skeleton"><div class="skeleton-row" style="height:36px;border-radius:6px;"></div></div>{{end}}
+</div>
+{{end}}
+
 {{if .Deployment.ErrorMessage}}
 <div class="error-banner">
   <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 2V8M7 11V11.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="7" cy="7" r="6" stroke="currentColor" stroke-width="1.3"/></svg>

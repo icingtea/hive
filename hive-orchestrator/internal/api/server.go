@@ -5,24 +5,28 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
 	"hive-mind/internal/dashboard"
+	"hive-mind/internal/domain"
 	"hive-mind/internal/orchestrator"
 	"hive-mind/internal/podmanager"
 	"hive-mind/internal/registry"
 )
 
 type Server struct {
-	cfg   ServerConfig
-	store registry.Store
-	podMgr podmanager.PodManager
-	orch  *orchestrator.Orchestrator
-	log   *slog.Logger
-	http  *http.Server
+	cfg        ServerConfig
+	store      registry.Store
+	podMgr     podmanager.PodManager
+	orch       *orchestrator.Orchestrator
+	log        *slog.Logger
+	http       *http.Server
+	heartbeats map[string]*domain.Heartbeat
+	hbMu       sync.RWMutex
 }
 
 type ServerConfig struct {
@@ -37,7 +41,7 @@ func NewServer(
 	orch *orchestrator.Orchestrator,
 	log *slog.Logger,
 ) *Server {
-	s := &Server{cfg: cfg, store: store, podMgr: podMgr, orch: orch, log: log}
+	s := &Server{cfg: cfg, store: store, podMgr: podMgr, orch: orch, log: log, heartbeats: make(map[string]*domain.Heartbeat)}
 	s.http = &http.Server{
 		Addr:         fmt.Sprintf("%s:%d", cfg.Host, cfg.Port),
 		Handler:      s.routes(),
@@ -60,7 +64,7 @@ func (s *Server) routes() http.Handler {
 		http.Redirect(w, r, "/dashboard", http.StatusFound)
 	})
 
-	dashboard.Mount(r, s.store, s.orch, s.log)
+	dashboard.Mount(r, s.store, s.orch, s, s.log)
 
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Post("/agents", s.handleCreateAgent)
@@ -70,6 +74,9 @@ func (s *Server) routes() http.Handler {
 
 		r.Get("/deployments/{id}", s.handleGetDeployment)
 		r.Post("/deployments/{id}/stop", s.handleStopDeployment)
+		r.Get("/deployments/{id}/heartbeat", s.handleGetHeartbeat)
+
+		r.Post("/ingest/heartbeat", s.handleIngestHeartbeat)
 
 		// Phase 1 direct pod endpoints (useful for debugging)
 		r.Post("/pods", s.handleSpawnPod)

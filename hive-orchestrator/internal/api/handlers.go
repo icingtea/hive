@@ -217,3 +217,38 @@ func (s *Server) handleStopDeployment(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
+
+// ── Heartbeat ─────────────────────────────────────────────────────────────────
+
+func (s *Server) handleIngestHeartbeat(w http.ResponseWriter, r *http.Request) {
+	var hb domain.Heartbeat
+	if err := readJSON(r, &hb); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	hb.ReceivedAt = time.Now()
+
+	s.hbMu.Lock()
+	s.heartbeats[hb.DeploymentID] = &hb
+	s.hbMu.Unlock()
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) handleGetHeartbeat(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	hb, ok := s.GetHeartbeat(id)
+	if !ok {
+		writeError(w, http.StatusNotFound, "no heartbeat received yet")
+		return
+	}
+	writeJSON(w, http.StatusOK, hb)
+}
+
+// GetHeartbeat satisfies dashboard.HeartbeatGetter.
+func (s *Server) GetHeartbeat(deploymentID string) (*domain.Heartbeat, bool) {
+	s.hbMu.RLock()
+	hb, ok := s.heartbeats[deploymentID]
+	s.hbMu.RUnlock()
+	return hb, ok
+}

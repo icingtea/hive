@@ -11,8 +11,10 @@ hive-mind/hive.db
 hive-mind/cmd/orchestrator/hive.db
 
 # Zig build artifacts
-*/.zig-cache/
-*/zig-out/
+.zig-cache/
+**/.zig-cache/
+zig-out/
+**/zig-out/
 
 # Go build cache
 *.test

@@ -1,7 +1,5 @@
 const std = @import("std");
 
-const AGENT_PORT: u16 = 8080;
-
 const Payload = struct {
     deployment_id: []const u8,
     agent_id: []const u8,
@@ -9,7 +7,6 @@ const Payload = struct {
     uptime: ?[]const u8,
     meminfo: ?[]const u8,
     kernel: ?[]const u8,
-    cpu_usage_usec: ?u64,
     memory_bytes: ?u64,
     memory_limit_bytes: ?u64,
 };
@@ -47,22 +44,23 @@ fn runOnce(client: *std.http.Client, allocator: std.mem.Allocator, deployment_id
     const kernel = try runCmd(allocator, &.{ "uname", "-r" });
     defer if (kernel) |k| allocator.free(k);
 
-    const pid = try pidFromPort(allocator, AGENT_PORT);
+    // Find agent PID via pgrep python
+    const pid = try pidFromPgrep(allocator, "python");
 
-    // cgroup v2 CPU
-    var cpu_usage_usec: ?u64 = null;
-    if (try runCmd(allocator, &.{ "cat", "/sys/fs/cgroup/cpu.stat" })) |content| {
-        defer allocator.free(content);
-        cpu_usage_usec = parseCgroupField(content, "usage_usec");
-    }
-
-    // cgroup v2 memory
     var memory_bytes: ?u64 = null;
     var memory_limit_bytes: ?u64 = null;
-    if (try runCmd(allocator, &.{ "cat", "/sys/fs/cgroup/memory.current" })) |content| {
-        defer allocator.free(content);
-        memory_bytes = std.fmt.parseInt(u64, std.mem.trim(u8, content, " \n\r\t"), 10) catch null;
+    if (pid) |p| {
+        const status_path = try std.fmt.allocPrint(allocator, "/proc/{d}/status", .{p});
+        defer allocator.free(status_path);
+        if (try runCmd(allocator, &.{ "cat", status_path })) |content| {
+            defer allocator.free(content);
+            if (parseProcStatusField(content, "VmRSS:")) |kb| {
+                memory_bytes = kb * 1024;
+            }
+        }
     }
+
+    // memory limit from cgroup (pod-level)
     if (try runCmd(allocator, &.{ "cat", "/sys/fs/cgroup/memory.max" })) |content| {
         defer allocator.free(content);
         const trimmed = std.mem.trim(u8, content, " \n\r\t");
@@ -78,23 +76,11 @@ fn runOnce(client: *std.http.Client, allocator: std.mem.Allocator, deployment_id
         .uptime = uptime,
         .meminfo = meminfo,
         .kernel = kernel,
-        .cpu_usage_usec = cpu_usage_usec,
         .memory_bytes = memory_bytes,
         .memory_limit_bytes = memory_limit_bytes,
     };
 
     try sendPostJsonFetch(client, allocator, post_url, payload);
-}
-
-fn parseCgroupField(content: []const u8, field: []const u8) ?u64 {
-    var lines = std.mem.splitScalar(u8, content, '\n');
-    while (lines.next()) |line| {
-        if (std.mem.startsWith(u8, line, field)) {
-            const rest = std.mem.trimLeft(u8, line[field.len..], " \t");
-            return std.fmt.parseInt(u64, rest, 10) catch null;
-        }
-    }
-    return null;
 }
 
 fn runCmd(al: std.mem.Allocator, argv: []const []const u8) !?[]u8 {
@@ -116,11 +102,8 @@ fn runCmd(al: std.mem.Allocator, argv: []const []const u8) !?[]u8 {
     return out;
 }
 
-fn pidFromPort(al: std.mem.Allocator, port: u16) !?u32 {
-    var buf: [6]u8 = undefined;
-    const arg = try std.fmt.bufPrint(&buf, ":{d}", .{port});
-
-    const output = try runCmd(al, &.{ "lsof", "-ti", arg });
+fn pidFromPgrep(al: std.mem.Allocator, name: []const u8) !?u32 {
+    const output = try runCmd(al, &.{ "/usr/bin/pgrep", name });
     defer if (output) |o| al.free(o);
 
     if (output == null) return null;
@@ -131,7 +114,22 @@ fn pidFromPort(al: std.mem.Allocator, port: u16) !?u32 {
     var it = std.mem.splitScalar(u8, trimmed, '\n');
     const first = it.next().?;
 
-    return try std.fmt.parseInt(u32, first, 10);
+    return std.fmt.parseInt(u32, first, 10) catch null;
+}
+
+// Parse a kB field from /proc/<pid>/status (e.g. "VmRSS:   1234 kB")
+fn parseProcStatusField(content: []const u8, field: []const u8) ?u64 {
+    var lines = std.mem.splitScalar(u8, content, '\n');
+    while (lines.next()) |line| {
+        if (std.mem.startsWith(u8, line, field)) {
+            const rest = std.mem.trim(u8, line[field.len..], " \t");
+            var it = std.mem.splitScalar(u8, rest, ' ');
+            if (it.next()) |num| {
+                return std.fmt.parseInt(u64, num, 10) catch null;
+            }
+        }
+    }
+    return null;
 }
 
 fn sendPostJsonFetch(

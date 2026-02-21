@@ -2,6 +2,19 @@ package domain
 
 import "time"
 
+// Heartbeat is the telemetry payload pushed by the Zig sidecar every 5s.
+type Heartbeat struct {
+	DeploymentID      string    `json:"deployment_id"`
+	AgentID           string    `json:"agent_id"`
+	PID               *uint32   `json:"pid"`
+	Uptime            *string   `json:"uptime"`
+	Meminfo           *string   `json:"meminfo"`
+	Kernel            *string   `json:"kernel"`
+	MemoryBytes       *uint64   `json:"memory_bytes"`
+	MemoryLimitBytes  *uint64   `json:"memory_limit_bytes"`
+	ReceivedAt        time.Time `json:"received_at"`
+}
+
 type AgentStatus string
 
 const (

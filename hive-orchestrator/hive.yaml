@@ -14,6 +14,6 @@ registry:
   url: hive-registry:5000
 
 hive:
-  ws_host: ws://localhost:8181
-  orchestrator_url: http://localhost:8181
+  ws_host: ws://hive-orchestrator.hive-agents.svc.cluster.local:8181
+  orchestrator_url: http://hive-orchestrator.hive-agents.svc.cluster.local:8181
   staging_dir: /tmp/hive-staging

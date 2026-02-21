@@ -1,0 +1,4 @@
+FROM alpine:3.21
+RUN apk add --no-cache lsof
+COPY hive_panopticon/zig-out/bin/hive_panopticon /usr/local/bin/hive-sidecar
+ENTRYPOINT ["/usr/local/bin/hive-sidecar"]

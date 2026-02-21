@@ -28,16 +28,23 @@ import (
 //go:embed templates/* static/*
 var assets embed.FS
 
+// HeartbeatGetter is a minimal interface so the dashboard can read heartbeats
+// without depending on the full api.Server.
+type HeartbeatGetter interface {
+	GetHeartbeat(deploymentID string) (*domain.Heartbeat, bool)
+}
+
 type Handler struct {
 	store registry.Store
 	orch  *orchestrator.Orchestrator
+	hb    HeartbeatGetter
 	log   *slog.Logger
 	tmpl  *template.Template
 }
 
 // Mount registers all dashboard routes under /dashboard.
-func Mount(r chi.Router, store registry.Store, orch *orchestrator.Orchestrator, log *slog.Logger) {
-	h := &Handler{store: store, orch: orch, log: log}
+func Mount(r chi.Router, store registry.Store, orch *orchestrator.Orchestrator, hb HeartbeatGetter, log *slog.Logger) {
+	h := &Handler{store: store, orch: orch, hb: hb, log: log}
 	h.tmpl = h.parseTemplates()
 
 	r.Route("/dashboard", func(r chi.Router) {
@@ -54,6 +61,7 @@ func Mount(r chi.Router, store registry.Store, orch *orchestrator.Orchestrator, 
 		r.Get("/partials/deployment-meta/{id}", h.handlePartialDeploymentMeta)
 		r.Get("/partials/running-count", h.handlePartialRunningCount)
 		r.Get("/partials/deployment-status/{id}", h.handlePartialDeploymentStatus)
+		r.Get("/partials/heartbeat/{id}", h.handlePartialHeartbeat)
 
 		// SSE
 		r.Get("/deployments/{id}/logs/stream", h.handleLogStream)
@@ -85,19 +93,7 @@ var funcMap = template.FuncMap{
 		}
 		return false
 	},
-	"relTime": func(t time.Time) string {
-		d := time.Since(t)
-		switch {
-		case d < time.Minute:
-			return "just now"
-		case d < time.Hour:
-			return fmt.Sprintf("%dm ago", int(d.Minutes()))
-		case d < 24*time.Hour:
-			return fmt.Sprintf("%dh ago", int(d.Hours()))
-		default:
-			return fmt.Sprintf("%dd ago", int(d.Hours()/24))
-		}
-	},
+	"relTime": relTimeFn,
 	"shortImage": func(ref string) string {
 		p := strings.Split(ref, "/")
 		return p[len(p)-1]
@@ -210,6 +206,20 @@ func (h *Handler) buildIndexData(ctx context.Context) (indexData, error) {
 		rows = append(rows, row)
 	}
 	return indexData{Page: "dashboard", Deployments: rows, RunningCount: running, TotalCount: len(deps), AgentCount: len(agents)}, nil
+}
+
+func relTimeFn(t time.Time) string {
+	d := time.Since(t)
+	switch {
+	case d < time.Minute:
+		return "just now"
+	case d < time.Hour:
+		return fmt.Sprintf("%dm ago", int(d.Minutes()))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%dh ago", int(d.Hours()))
+	default:
+		return fmt.Sprintf("%dd ago", int(d.Hours()/24))
+	}
 }
 
 func repoShortFn(url string) string {
@@ -344,6 +354,88 @@ func (h *Handler) handlePartialDeploymentMeta(w http.ResponseWriter, r *http.Req
   <span class="meta-label">Status</span>
   <span class="badge badge--%s"><span class="badge-dot"></span>%s</span>
 </div>`, dep.Status, dep.Status)
+}
+
+func (h *Handler) handlePartialHeartbeat(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	w.Header().Set("Content-Type", "text/html")
+	hb, ok := h.hb.GetHeartbeat(id)
+	if !ok {
+		fmt.Fprintf(w, `<div class="hb-grid" id="hb-grid" hx-get="/dashboard/partials/heartbeat/%s" hx-trigger="every 5s" hx-swap="outerHTML"><p class="hb-waiting">Waiting for heartbeat…</p></div>`, id)
+		return
+	}
+	fmt.Fprintf(w, `<div class="hb-grid" id="hb-grid" hx-get="/dashboard/partials/heartbeat/%s" hx-trigger="every 5s" hx-swap="outerHTML">`, id)
+	// Memory
+	memVal := "—"
+	if hb.MemoryBytes != nil {
+		memVal = fmtBytes(*hb.MemoryBytes)
+	}
+	memLimit := ""
+	if hb.MemoryLimitBytes != nil {
+		memLimit = fmt.Sprintf(" / %s", fmtBytes(*hb.MemoryLimitBytes))
+	}
+	fmt.Fprintf(w, `<div class="hb-card"><span class="hb-label">Memory</span><span class="hb-value mono">%s%s</span></div>`, memVal, memLimit)
+	// PID
+	pidVal := "—"
+	if hb.PID != nil {
+		pidVal = fmt.Sprintf("%d", *hb.PID)
+	}
+	fmt.Fprintf(w, `<div class="hb-card"><span class="hb-label">Agent PID</span><span class="hb-value mono">%s</span></div>`, pidVal)
+	// Kernel
+	kernelVal := "—"
+	if hb.Kernel != nil {
+		kernelVal = *hb.Kernel
+	}
+	fmt.Fprintf(w, `<div class="hb-card"><span class="hb-label">Kernel</span><span class="hb-value mono">%s</span></div>`, kernelVal)
+	// Uptime
+	uptimeVal := "—"
+	if hb.Uptime != nil {
+		// /proc/uptime gives "seconds idle\n", show just the first field humanised
+		uptimeVal = fmtUptime(*hb.Uptime)
+	}
+	fmt.Fprintf(w, `<div class="hb-card"><span class="hb-label">Uptime</span><span class="hb-value mono">%s</span></div>`, uptimeVal)
+	// Last seen
+	fmt.Fprintf(w, `<div class="hb-card"><span class="hb-label">Last Heartbeat</span><span class="hb-value">%s</span></div>`, relTimeFn(hb.ReceivedAt))
+	fmt.Fprintf(w, `</div>`)
+}
+
+func fmtBytes(b uint64) string {
+	switch {
+	case b >= 1<<30:
+		return fmt.Sprintf("%.1f GiB", float64(b)/float64(1<<30))
+	case b >= 1<<20:
+		return fmt.Sprintf("%.1f MiB", float64(b)/float64(1<<20))
+	case b >= 1<<10:
+		return fmt.Sprintf("%.1f KiB", float64(b)/float64(1<<10))
+	default:
+		return fmt.Sprintf("%d B", b)
+	}
+}
+
+func fmtUptime(raw string) string {
+	// /proc/uptime: "12345.67 98765.43"
+	parts := strings.Fields(raw)
+	if len(parts) == 0 {
+		return raw
+	}
+	secs, err := fmt.Sscanf(parts[0], "%f", new(float64))
+	_ = secs
+	if err != nil {
+		return parts[0]
+	}
+	var f float64
+	fmt.Sscanf(parts[0], "%f", &f)
+	d := int(f)
+	h := d / 3600
+	m := (d % 3600) / 60
+	s := d % 60
+	if h > 0 {
+		return fmt.Sprintf("%dh %dm %ds", h, m, s)
+	}
+	if m > 0 {
+		return fmt.Sprintf("%dm %ds", m, s)
+	}
+	return fmt.Sprintf("%ds", s)
 }
 
 // ── SSE log stream ────────────────────────────────────────────────────────────
