@@ -35,7 +35,7 @@ async def process(state: State) -> Dict[str, Any]:
         },
     )
 
-    return {}
+    return state
 
 
 graph = StateGraph(State)

@@ -28,7 +28,7 @@ async def process(state: State) -> Dict[str, Any]:
         },
     )
 
-    return {}
+    return state
 
 graph = StateGraph(State)
 graph.add_node("process", process)
