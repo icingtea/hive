@@ -5,13 +5,6 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends git ca-certificates && \
     rm -rf /var/lib/apt/lists/*
 
-WORKDIR /app
-
-ARG REPO_URL
-RUN git clone ${REPO_URL} repo
-
-WORKDIR /app/repo
-
 # install python deps if present
 RUN if [ -f requirements.txt ]; then \
         pip install --no-cache-dir -r requirements.txt; \
