@@ -41,7 +41,7 @@ h11==0.16.0
     # via
     #   httpcore
     #   uvicorn
-hive-hook @ git+https://github.com/icingtea/hive.git@4fa75c200dcd09368086a3e0f6eb948b1bdc88c4#subdirectory=hive-hook
+hive-hook==0.1.0
     # via hive-mock-pipeline
 httpcore==1.0.9
     # via httpx
