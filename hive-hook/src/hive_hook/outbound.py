@@ -46,7 +46,8 @@ async def send_to_hive(
         destination_agent_endpoint: Which endpoint on the target agent
             should receive the payload.  Use ``EndpointEnum.START`` to
             trigger a new graph execution, or ``EndpointEnum.DATA`` to
-            feed into an existing one.
+            feed into an existing one, or ``EndpointEnum.RETURN`` to send
+            it back to the frontend.
         payload: Arbitrary JSON-serialisable dict to deliver.  For
             ``EndpointEnum.DATA`` targets this should include at least
             ``data_id`` (and optionally ``unique_id``) so that the

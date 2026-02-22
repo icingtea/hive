@@ -61,6 +61,7 @@ class EndpointEnum(StrEnum):
 
     START = "start"
     DATA = "data"
+    EXTERNAL = "external"
 
 
 class HiveOutboundBaseData(BaseModel):
