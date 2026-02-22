@@ -8,6 +8,9 @@ import (
 	"syscall"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -20,6 +23,27 @@ import (
 	"hive-mind/internal/podmanager"
 	"hive-mind/internal/registry"
 )
+
+func ensureNamespaces(ctx context.Context, k8s kubernetes.Interface, log *slog.Logger, namespaces ...string) {
+	for _, ns := range namespaces {
+		_, err := k8s.CoreV1().Namespaces().Get(ctx, ns, metav1.GetOptions{})
+		if err == nil {
+			continue
+		}
+		if !errors.IsNotFound(err) {
+			log.Warn("could not check namespace", "namespace", ns, "err", err)
+			continue
+		}
+		_, err = k8s.CoreV1().Namespaces().Create(ctx, &corev1.Namespace{
+			ObjectMeta: metav1.ObjectMeta{Name: ns},
+		}, metav1.CreateOptions{})
+		if err != nil {
+			log.Warn("could not create namespace", "namespace", ns, "err", err)
+		} else {
+			log.Info("created namespace", "namespace", ns)
+		}
+	}
+}
 
 func buildK8sClient(cfg *config.Config) (kubernetes.Interface, error) {
 	var restCfg *rest.Config
@@ -65,6 +89,10 @@ func main() {
 		os.Exit(1)
 	}
 
+	nsCtx, nsCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ensureNamespaces(nsCtx, k8sClient, log, cfg.Kubernetes.Namespace, "hive-system")
+	nsCancel()
+
 	podMgr := newPodManager(cfg, log)
 	bldr := builder.NewBuilder(k8sClient, cfg.Registry.URL, log)
 	logs := logbuf.NewRegistry()
@@ -74,6 +102,9 @@ func main() {
 		Host: cfg.Server.Host,
 		Port: cfg.Server.Port,
 	}, store, podMgr, orch, log)
+
+	// Wire the route registrar after both orch and srv are constructed.
+	orch.SetRegistrar(srv)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

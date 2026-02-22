@@ -1,0 +1,59 @@
+{{define "page-comms"}}
+<div class="page-header">
+  <div class="page-header-left">
+    <h1 class="page-title">Communications</h1>
+    <p class="page-subtitle">Agent-to-agent messages routed through the orchestrator</p>
+  </div>
+</div>
+
+<div id="comms-table-wrap"
+  hx-get="/dashboard/partials/commlogs"
+  hx-trigger="every 3s"
+  hx-swap="innerHTML">
+  {{template "comms-table" .}}
+</div>
+{{end}}
+
+{{define "comms-table"}}
+{{if not .Logs}}
+<div class="empty-state">
+  <p class="empty-state-text">No communications yet.</p>
+</div>
+{{else}}
+<table class="table">
+  <thead>
+    <tr>
+      <th>Time</th>
+      <th>From</th>
+      <th>To</th>
+      <th>Endpoint</th>
+      <th>Status</th>
+      <th>Payload</th>
+    </tr>
+  </thead>
+  <tbody>
+    {{range .Logs}}
+    <tr class="table-row">
+      <td class="mono text-xs">{{relTime .Timestamp}}</td>
+      <td class="mono">{{if .FromAgentName}}{{.FromAgentName}}{{else}}<span class="text-subtle">—</span>{{end}}</td>
+      <td class="mono">{{.ToAgentName}}</td>
+      <td><span class="badge badge--{{if eq .Endpoint "start"}}blue{{else}}default{{end}}">{{.Endpoint}}</span></td>
+      <td>
+        {{if eq .Status "delivered"}}
+        <span class="badge badge--running"><span class="badge-dot"></span>delivered</span>
+        {{else}}
+        <span class="badge badge--failed"><span class="badge-dot"></span>failed</span>
+        {{end}}
+      </td>
+      <td class="mono text-xs comm-payload" title="{{.Payload}}">{{truncate .Payload 80}}</td>
+    </tr>
+    {{if .Error}}
+    <tr class="table-row table-row--error">
+      <td colspan="6" class="text-xs" style="color:var(--red);padding:4px 14px 8px;">{{.Error}}</td>
+    </tr>
+    {{end}}
+    {{end}}
+  </tbody>
+</table>
+{{end}}
+{{end}}

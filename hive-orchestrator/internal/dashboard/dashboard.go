@@ -22,6 +22,7 @@ import (
 	"hive-mind/internal/dashboard/logbuf"
 	"hive-mind/internal/domain"
 	"hive-mind/internal/orchestrator"
+	"hive-mind/internal/podmanager"
 	"hive-mind/internal/registry"
 )
 
@@ -34,17 +35,24 @@ type HeartbeatGetter interface {
 	GetHeartbeat(deploymentID string) (*domain.Heartbeat, bool)
 }
 
+// CommLogGetter is a minimal interface so the dashboard can read comm logs.
+type CommLogGetter interface {
+	GetCommLogs() []*domain.CommLog
+}
+
 type Handler struct {
-	store registry.Store
-	orch  *orchestrator.Orchestrator
-	hb    HeartbeatGetter
-	log   *slog.Logger
-	tmpl  *template.Template
+	store   registry.Store
+	orch    *orchestrator.Orchestrator
+	podMgr  podmanager.PodManager
+	hb      HeartbeatGetter
+	comms   CommLogGetter
+	log     *slog.Logger
+	tmpl    *template.Template
 }
 
 // Mount registers all dashboard routes under /dashboard.
-func Mount(r chi.Router, store registry.Store, orch *orchestrator.Orchestrator, hb HeartbeatGetter, log *slog.Logger) {
-	h := &Handler{store: store, orch: orch, hb: hb, log: log}
+func Mount(r chi.Router, store registry.Store, orch *orchestrator.Orchestrator, podMgr podmanager.PodManager, hb HeartbeatGetter, comms CommLogGetter, log *slog.Logger) {
+	h := &Handler{store: store, orch: orch, podMgr: podMgr, hb: hb, comms: comms, log: log}
 	h.tmpl = h.parseTemplates()
 
 	r.Route("/dashboard", func(r chi.Router) {
@@ -54,6 +62,7 @@ func Mount(r chi.Router, store registry.Store, orch *orchestrator.Orchestrator, 
 		// Pages
 		r.Get("/", h.handleIndex)
 		r.Get("/deployments/{id}", h.handleDeploymentDetail)
+		r.Get("/comms", h.handleCommsPage)
 
 		// HTMX partials
 		r.Get("/partials/deployments", h.handlePartialDeployments)
@@ -62,6 +71,7 @@ func Mount(r chi.Router, store registry.Store, orch *orchestrator.Orchestrator, 
 		r.Get("/partials/running-count", h.handlePartialRunningCount)
 		r.Get("/partials/deployment-status/{id}", h.handlePartialDeploymentStatus)
 		r.Get("/partials/heartbeat/{id}", h.handlePartialHeartbeat)
+		r.Get("/partials/commlogs", h.handlePartialCommLogs)
 
 		// SSE
 		r.Get("/deployments/{id}/logs/stream", h.handleLogStream)
@@ -116,6 +126,12 @@ var funcMap = template.FuncMap{
 		}
 		return s
 	},
+	"truncate": func(s string, n int) string {
+		if len(s) <= n {
+			return s
+		}
+		return s[:n] + "…"
+	},
 }
 
 func (h *Handler) parseTemplates() *template.Template {
@@ -159,6 +175,7 @@ type deploymentRow struct {
 	*domain.Deployment
 	AgentName string
 	RepoShort string
+	NodeName  string // kubernetes node (machine) the pod is running on
 }
 
 type indexData struct {
@@ -202,6 +219,11 @@ func (h *Handler) buildIndexData(ctx context.Context) (indexData, error) {
 		}
 		if d.Status == domain.DeploymentStatusRunning {
 			running++
+			if d.PodName != "" && h.podMgr != nil {
+				if status, err := h.podMgr.GetStatus(ctx, d.PodName, d.Namespace); err == nil {
+					row.NodeName = status.NodeName
+				}
+			}
 		}
 		rows = append(rows, row)
 	}
@@ -654,20 +676,20 @@ func validateGitHubRepo(repoURL, branch string) error {
 	if err := json.NewDecoder(resp.Body).Decode(&contents); err != nil {
 		return fmt.Errorf("could not parse GitHub response")
 	}
-	hasAgent, hasReqs := false, false
+	hasEntry, hasReqs := false, false
 	for _, f := range contents {
 		if f.Type != "file" {
 			continue
 		}
-		switch f.Name {
-		case "agent.py":
-			hasAgent = true
-		case "requirements.txt":
+		if strings.HasSuffix(f.Name, ".py") {
+			hasEntry = true
+		}
+		if f.Name == "requirements.txt" {
 			hasReqs = true
 		}
 	}
-	if !hasAgent {
-		return fmt.Errorf("repo is missing agent.py at the root")
+	if !hasEntry {
+		return fmt.Errorf("repo is missing a .py entry point at the root")
 	}
 	if !hasReqs {
 		return fmt.Errorf("repo is missing requirements.txt at the root")
@@ -677,3 +699,27 @@ func validateGitHubRepo(repoURL, branch string) error {
 
 // ensure logbuf is referenced
 var _ *logbuf.Registry
+
+// ── Comms page ────────────────────────────────────────────────────────────────
+
+type commsData struct {
+	Logs []*domain.CommLog
+}
+
+func (h *Handler) handleCommsPage(w http.ResponseWriter, r *http.Request) {
+	logs := h.comms.GetCommLogs()
+	// Reverse so newest is first
+	for i, j := 0, len(logs)-1; i < j; i, j = i+1, j-1 {
+		logs[i], logs[j] = logs[j], logs[i]
+	}
+	h.renderPage(w, "Communications", "comms", "page-comms", commsData{Logs: logs}, 0)
+}
+
+func (h *Handler) handlePartialCommLogs(w http.ResponseWriter, r *http.Request) {
+	logs := h.comms.GetCommLogs()
+	for i, j := 0, len(logs)-1; i < j; i, j = i+1, j-1 {
+		logs[i], logs[j] = logs[j], logs[i]
+	}
+	w.Header().Set("Content-Type", "text/html")
+	h.execTmpl(w, "comms-table", commsData{Logs: logs})
+}

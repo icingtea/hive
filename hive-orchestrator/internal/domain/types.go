@@ -2,6 +2,28 @@ package domain
 
 import "time"
 
+// CommLog records a single agent-to-agent message routed through the orchestrator.
+type CommLog struct {
+	ID                 string    `json:"id"`
+	FromAgentName      string    `json:"from_agent_name"`
+	ToAgentName        string    `json:"to_agent_name"`
+	Endpoint           string    `json:"endpoint"` // "data" or "start"
+	Payload            string    `json:"payload"`  // raw JSON
+	Status             string    `json:"status"`   // "delivered" or "failed"
+	Error              string    `json:"error,omitempty"`
+	Timestamp          time.Time `json:"timestamp"`
+}
+
+// AgentRoute maps a self-declared agent name to its pod address.
+type AgentRoute struct {
+	AgentName string
+	PodIP     string
+	Port      string // HIVE_POD_PORT, default "8080"
+	PodName   string // kubernetes pod name (for kubectl exec forwarding)
+	Namespace string // kubernetes namespace
+	Terminal  bool   // true if deployed from a repo with terminal-agent.py
+}
+
 // Heartbeat is the telemetry payload pushed by the Zig sidecar every 5s.
 type Heartbeat struct {
 	DeploymentID      string    `json:"deployment_id"`

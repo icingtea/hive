@@ -5,7 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
+	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -251,4 +254,233 @@ func (s *Server) GetHeartbeat(deploymentID string) (*domain.Heartbeat, bool) {
 	hb, ok := s.heartbeats[deploymentID]
 	s.hbMu.RUnlock()
 	return hb, ok
+}
+
+// ── Agent routing & communication ────────────────────────────────────────────
+
+// RegisterAgentRoute stores the self-declared name → pod address mapping.
+func (s *Server) RegisterAgentRoute(name, podIP, port, podName, namespace string) {
+	s.agentRoutesMu.Lock()
+	defer s.agentRoutesMu.Unlock()
+	s.agentRoutes[name] = &domain.AgentRoute{
+		AgentName: name,
+		PodIP:     podIP,
+		Port:      port,
+		PodName:   podName,
+		Namespace: namespace,
+	}
+}
+
+// GetCommLogs satisfies dashboard.CommLogGetter.
+func (s *Server) GetCommLogs() []*domain.CommLog {
+	s.commLogsMu.RLock()
+	defer s.commLogsMu.RUnlock()
+	out := make([]*domain.CommLog, len(s.commLogs))
+	copy(out, s.commLogs)
+	return out
+}
+
+type communicateRequest struct {
+	DestinationAgentID       string         `json:"destination_agent_id"`
+	DestinationAgentEndpoint string         `json:"destination_agent_endpoint"` // "data" or "start"
+	Payload                  map[string]any `json:"payload"`
+}
+
+func (s *Server) handleCommunicate(w http.ResponseWriter, r *http.Request) {
+	// Identify sender by reverse-lookup of the caller's pod IP.
+	fromAgent := r.Header.Get("X-Hive-Agent-Name")
+	if fromAgent == "" {
+		callerIP := r.RemoteAddr
+		// Strip port from "ip:port"
+		if host, _, err := net.SplitHostPort(callerIP); err == nil {
+			callerIP = host
+		}
+		s.agentRoutesMu.RLock()
+		for name, route := range s.agentRoutes {
+			if route.PodIP == callerIP {
+				fromAgent = name
+				break
+			}
+		}
+		s.agentRoutesMu.RUnlock()
+	}
+
+	var req communicateRequest
+	if err := readJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	if req.DestinationAgentID == "" {
+		writeError(w, http.StatusBadRequest, "destination_agent_id is required")
+		return
+	}
+	endpoint := req.DestinationAgentEndpoint
+	if endpoint == "" {
+		endpoint = "data"
+	}
+
+	// Look up destination pod
+	s.agentRoutesMu.RLock()
+	route, ok := s.agentRoutes[req.DestinationAgentID]
+	s.agentRoutesMu.RUnlock()
+
+	entry := &domain.CommLog{
+		ID:            uuid.New().String(),
+		FromAgentName: fromAgent,
+		ToAgentName:   req.DestinationAgentID,
+		Endpoint:      endpoint,
+		Timestamp:     time.Now(),
+	}
+
+	if payloadBytes, err := json.Marshal(req.Payload); err == nil {
+		entry.Payload = string(payloadBytes)
+	}
+
+	payloadBytes, _ := json.Marshal(req.Payload)
+
+	// "external" endpoint means this is a final result — store it and return.
+	// Key by destination_agent_id (agent-controlled), fall back to fromAgent.
+	if endpoint == "external" {
+		key := req.DestinationAgentID
+		if key == "" {
+			key = fromAgent
+		}
+		s.agentResultsMu.Lock()
+		s.agentResults[key] = json.RawMessage(payloadBytes)
+		s.agentResultsMu.Unlock()
+		entry.Status = "delivered"
+		s.appendCommLog(entry)
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	if !ok {
+		entry.Status = "failed"
+		entry.Error = "destination agent not found in routing table"
+		s.appendCommLog(entry)
+		writeError(w, http.StatusNotFound, fmt.Sprintf("agent %q not found", req.DestinationAgentID))
+		return
+	}
+
+	// Forward only the payload to the destination pod via kubectl exec
+	if err := forwardToAgent(route, endpoint, payloadBytes); err != nil {
+		entry.Status = "failed"
+		entry.Error = err.Error()
+		s.appendCommLog(entry)
+		writeError(w, http.StatusBadGateway, fmt.Sprintf("forward failed: %s", err))
+		return
+	}
+
+	entry.Status = "delivered"
+	s.appendCommLog(entry)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleExternalMessage accepts {type: "start"|"data", payload: {...}} from any
+// external service, strips the envelope, and forwards the inner payload to the
+// agent's /start or /data endpoint accordingly.
+func (s *Server) handleExternalMessage(w http.ResponseWriter, r *http.Request) {
+	agentName := chi.URLParam(r, "agent_name")
+
+	var envelope struct {
+		Type    string         `json:"type"`
+		Payload map[string]any `json:"payload"`
+	}
+	if err := readJSON(r, &envelope); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON — expected {type, payload}")
+		return
+	}
+	endpoint := strings.ToLower(envelope.Type)
+	if endpoint != "start" && endpoint != "data" {
+		writeError(w, http.StatusBadRequest, `type must be "start" or "data"`)
+		return
+	}
+
+	payloadBytes, err := json.Marshal(envelope.Payload)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid payload")
+		return
+	}
+
+	s.agentRoutesMu.RLock()
+	route, ok := s.agentRoutes[agentName]
+	s.agentRoutesMu.RUnlock()
+
+	entry := &domain.CommLog{
+		ID:            uuid.New().String(),
+		FromAgentName: "external",
+		ToAgentName:   agentName,
+		Endpoint:      endpoint,
+		Payload:       string(payloadBytes),
+		Timestamp:     time.Now(),
+	}
+
+	if !ok {
+		entry.Status = "failed"
+		entry.Error = "agent not found in routing table"
+		s.appendCommLog(entry)
+		writeError(w, http.StatusNotFound, fmt.Sprintf("agent %q not found", agentName))
+		return
+	}
+
+	if err := forwardToAgent(route, endpoint, payloadBytes); err != nil {
+		entry.Status = "failed"
+		entry.Error = err.Error()
+		s.appendCommLog(entry)
+		writeError(w, http.StatusBadGateway, fmt.Sprintf("forward failed: %s", err))
+		return
+	}
+
+	entry.Status = "delivered"
+	s.appendCommLog(entry)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// forwardToAgent delivers payloadBytes to the agent pod's /<endpoint> using kubectl exec.
+// This avoids the need for the orchestrator host to have direct network access to pod IPs.
+func forwardToAgent(route *domain.AgentRoute, endpoint string, payloadBytes []byte) error {
+	pyPayload := strings.ReplaceAll(string(payloadBytes), `'`, `'"'"'`)
+	script := fmt.Sprintf(
+		`import urllib.request,sys; req=urllib.request.Request('http://localhost:%s/%s',data=b'%s',headers={'Content-Type':'application/json'},method='POST'); r=urllib.request.urlopen(req,timeout=10); sys.exit(0 if r.status < 400 else 1)`,
+		route.Port, endpoint, pyPayload,
+	)
+	out, err := exec.Command("kubectl", "exec", route.PodName,
+		"-n", route.Namespace,
+		"-c", "agent",
+		"--", "python3", "-c", script,
+	).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("kubectl exec: %w — %s", err, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+func (s *Server) appendCommLog(entry *domain.CommLog) {
+	s.commLogsMu.Lock()
+	defer s.commLogsMu.Unlock()
+	s.commLogs = append(s.commLogs, entry)
+	// Cap at 1000 entries
+	if len(s.commLogs) > 1000 {
+		s.commLogs = s.commLogs[len(s.commLogs)-1000:]
+	}
+}
+
+func (s *Server) handleGetCommLogs(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, s.GetCommLogs())
+}
+
+// handleGetResult returns the latest result payload pushed by an agent via
+// endpoint="external". Returns 404 if no result has been received yet.
+func (s *Server) handleGetResult(w http.ResponseWriter, r *http.Request) {
+	agentName := chi.URLParam(r, "agent_name")
+	s.agentResultsMu.RLock()
+	result, ok := s.agentResults[agentName]
+	s.agentResultsMu.RUnlock()
+	if !ok {
+		writeError(w, http.StatusNotFound, "no result yet for agent "+agentName)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write(result)
 }

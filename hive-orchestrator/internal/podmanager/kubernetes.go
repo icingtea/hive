@@ -134,6 +134,24 @@ func (m *KubernetesPodManager) WatchEvents(ctx context.Context, namespace string
 	return ch, nil
 }
 
+func (m *KubernetesPodManager) CountNodes(ctx context.Context) (int32, error) {
+	list, err := m.client.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return 0, err
+	}
+	// Count only schedulable nodes
+	var count int32
+	for _, n := range list.Items {
+		if !n.Spec.Unschedulable {
+			count++
+		}
+	}
+	if count == 0 {
+		count = 1
+	}
+	return count, nil
+}
+
 func podToStatus(p *corev1.Pod) *PodStatus {
 	msg := ""
 	if len(p.Status.Conditions) > 0 {
@@ -149,6 +167,7 @@ func podToStatus(p *corev1.Pod) *PodStatus {
 		Namespace: p.Namespace,
 		Phase:     string(p.Status.Phase),
 		PodIP:     p.Status.PodIP,
+		NodeName:  p.Spec.NodeName,
 		Message:   msg,
 	}
 }

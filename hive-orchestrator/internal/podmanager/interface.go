@@ -12,6 +12,16 @@ type SpawnOptions struct {
 	EnvVars      map[string]string
 	WSHost       string
 	OrchestratorURL string
+	// NodeCount is the number of schedulable nodes in the cluster, used to set
+	// MinDomains on the TopologySpreadConstraint so every node gets pods before
+	// any node gets a second one.
+	NodeCount int32
+}
+
+// NodeCounter is an optional capability — implementations that can query
+// the cluster node count should implement this.
+type NodeCounter interface {
+	CountNodes(ctx context.Context) (int32, error)
 }
 
 // PodStatus is a lightweight status snapshot returned by GetStatus.
@@ -20,6 +30,7 @@ type PodStatus struct {
 	Namespace string
 	Phase     string // Pending, Running, Succeeded, Failed, Unknown
 	PodIP     string
+	NodeName  string // Kubernetes node (machine) the pod is running on
 	Message   string
 }
 

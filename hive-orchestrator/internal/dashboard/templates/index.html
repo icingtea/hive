@@ -38,7 +38,7 @@
     <div class="modal-header">
       <div>
         <h2 class="modal-title" id="modal-title">Deploy Instance</h2>
-        <p class="modal-subtitle">Public GitHub repo with <code>agent.py</code> and <code>requirements.txt</code> at root.</p>
+        <p class="modal-subtitle">Public GitHub repo with <code>agent.py</code> or <code>streamlit-agent.py</code> and <code>requirements.txt</code> at root.</p>
       </div>
       <button class="modal-close" onclick="closeModal()" aria-label="Close">
         <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
@@ -166,6 +166,7 @@
       <div class="cell-stack">
         <span class="mono text-sm fw-medium">{{slice .ID 0 8}}</span>
         {{if .PodName}}<span class="tag mono">{{.PodName}}</span>{{end}}
+        {{if .NodeName}}<span class="tag mono text-muted">{{.NodeName}}</span>{{end}}
       </div>
     </a>
   </td>

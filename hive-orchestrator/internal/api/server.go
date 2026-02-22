@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -27,6 +28,15 @@ type Server struct {
 	http       *http.Server
 	heartbeats map[string]*domain.Heartbeat
 	hbMu       sync.RWMutex
+	// routing table: self-declared agent name → pod address
+	agentRoutes   map[string]*domain.AgentRoute
+	agentRoutesMu sync.RWMutex
+	// comm log: chronological list of routed messages
+	commLogs   []*domain.CommLog
+	commLogsMu sync.RWMutex
+	// latest result per agent name (set when an agent sends endpoint="external")
+	agentResults   map[string]json.RawMessage
+	agentResultsMu sync.RWMutex
 }
 
 type ServerConfig struct {
@@ -41,7 +51,16 @@ func NewServer(
 	orch *orchestrator.Orchestrator,
 	log *slog.Logger,
 ) *Server {
-	s := &Server{cfg: cfg, store: store, podMgr: podMgr, orch: orch, log: log, heartbeats: make(map[string]*domain.Heartbeat)}
+	s := &Server{
+		cfg:        cfg,
+		store:      store,
+		podMgr:     podMgr,
+		orch:       orch,
+		log:        log,
+		heartbeats:   make(map[string]*domain.Heartbeat),
+		agentRoutes:  make(map[string]*domain.AgentRoute),
+		agentResults: make(map[string]json.RawMessage),
+	}
 	s.http = &http.Server{
 		Addr:         fmt.Sprintf("%s:%d", cfg.Host, cfg.Port),
 		Handler:      s.routes(),
@@ -64,7 +83,7 @@ func (s *Server) routes() http.Handler {
 		http.Redirect(w, r, "/dashboard", http.StatusFound)
 	})
 
-	dashboard.Mount(r, s.store, s.orch, s, s.log)
+	dashboard.Mount(r, s.store, s.orch, s.podMgr, s, s, s.log)
 
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Post("/agents", s.handleCreateAgent)
@@ -77,6 +96,12 @@ func (s *Server) routes() http.Handler {
 		r.Get("/deployments/{id}/heartbeat", s.handleGetHeartbeat)
 
 		r.Post("/ingest/heartbeat", s.handleIngestHeartbeat)
+		r.Post("/communicate", s.handleCommunicate)
+		r.Get("/commlogs", s.handleGetCommLogs)
+
+		// External message ingress / result polling
+		r.Post("/message/{agent_name}", s.handleExternalMessage)
+		r.Get("/result/{agent_name}", s.handleGetResult)
 
 		// Phase 1 direct pod endpoints (useful for debugging)
 		r.Post("/pods", s.handleSpawnPod)
