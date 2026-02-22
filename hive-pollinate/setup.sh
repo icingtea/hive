@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-CONTROL_PLANE="https://1.2.3.4:6443"
-TOKEN="abcdef.0123456789abcdef"
-CA_HASH="sha256:REPLACE_ME"
+CONTROL_PLANE="https://142.93.222.37:6443"
+TOKEN="K1074e4fc0b86d1ba344dd3a1a6211640cdaed2051ba32aac65b9bf2ca4bdfdd1a8::server:159ad4b111afa9331ca11c63f609908c"
 
 echo "[*] detecting architecture..."
 ARCH="$(uname -m)"
@@ -61,8 +60,21 @@ if ! systemctl is-active --quiet k3s-agent; then
     K3S_TOKEN="${TOKEN}" \
     sh -
 
+mkdir -p /etc/rancher/k3s
+
+cat > /etc/rancher/k3s/registries.yaml <<'EOF'
+mirrors:
+  "142.93.222.37:5000":
+    endpoint:
+      - "http://142.93.222.37:5000"
+EOF
+
+systemctl restart k3s-agent
+
 else
   echo "[*] k3s already installed"
 fi
 
 echo "[✓] node bootstrap complete"
+
+
