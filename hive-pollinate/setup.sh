@@ -23,43 +23,46 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y \
   curl ca-certificates gnupg lsb-release apt-transport-https
 
 # ----------------------------
-# docker (container runtime)
+# docker (optional but keeping since you had it)
+# k3s ships containerd already, so docker is NOT required.
+# remove this block if you want lean nodes.
 # ----------------------------
 if ! command -v docker >/dev/null 2>&1; then
   echo "[*] installing docker..."
   curl -fsSL https://get.docker.com | sh
 fi
-systemctl enable --now docker
+systemctl enable --now docker || true
 
 # ----------------------------
-# kubernetes packages
+# install Go
 # ----------------------------
-echo "[*] installing kubeadm/kubelet/kubectl..."
+if ! command -v go >/dev/null 2>&1; then
+  echo "[*] installing Go..."
+  GO_VERSION="1.22.5"
 
-mkdir -p /etc/apt/keyrings
-curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.30/deb/Release.key \
-  | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+  curl -LO "https://go.dev/dl/go${GO_VERSION}.linux-${ARCH}.tar.gz"
+  rm -rf /usr/local/go
+  tar -C /usr/local -xzf "go${GO_VERSION}.linux-${ARCH}.tar.gz"
 
-echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] \
-https://pkgs.k8s.io/core:/stable:/v1.30/deb/ /" \
-  > /etc/apt/sources.list.d/kubernetes.list
+  echo 'export PATH=$PATH:/usr/local/go/bin' > /etc/profile.d/go.sh
+  export PATH=$PATH:/usr/local/go/bin
+fi
 
-apt-get update
-DEBIAN_FRONTEND=noninteractive apt-get install -y kubelet kubeadm kubectl
-apt-mark hold kubelet kubeadm kubectl
-
-systemctl enable kubelet
+go version
 
 # ----------------------------
-# kubeadm join
+# install k3s agent (worker)
 # ----------------------------
-if [ ! -f /etc/kubernetes/kubelet.conf ]; then
-  echo "[*] joining cluster..."
-  kubeadm join 1.2.3.4:6443 \
-    --token "${TOKEN}" \
-    --discovery-token-ca-cert-hash "${CA_HASH}"
+if ! systemctl is-active --quiet k3s-agent; then
+  echo "[*] installing k3s agent..."
+
+  curl -sfL https://get.k3s.io | \
+    K3S_URL="${CONTROL_PLANE}" \
+    K3S_TOKEN="${TOKEN}" \
+    sh -
+
 else
-  echo "[*] node already joined"
+  echo "[*] k3s already installed"
 fi
 
 echo "[✓] node bootstrap complete"
