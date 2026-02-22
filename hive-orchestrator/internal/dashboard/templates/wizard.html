@@ -1,58 +1,410 @@
 {{define "page-wizard"}}
+<style>
+  /* ── Wizard-specific ─────────────────────────────────────────────── */
+  .wiz-wrap {
+    max-width: 540px;
+    animation: fade-up 0.28s var(--ease-out) both;
+  }
+
+  .wiz-eyebrow {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .wiz-eyebrow-line {
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(to right, var(--accent), transparent);
+    opacity: 0.4;
+  }
+  .wiz-eyebrow-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+
+  .wiz-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-md);
+    overflow: hidden;
+    transition: background 0.2s, border-color 0.2s;
+    position: relative;
+  }
+
+  .wiz-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, var(--accent) 0%, transparent 70%);
+    opacity: 0.7;
+  }
+
+  .wiz-header {
+    padding: 22px 24px 18px;
+    border-bottom: 1px solid var(--border);
+    transition: border-color 0.2s;
+  }
+
+  .wiz-title {
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: -0.025em;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: 9px;
+  }
+
+  .wiz-title-icon {
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    background: var(--accent-bg);
+    border: 1px solid var(--accent-border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    color: var(--accent);
+  }
+
+  .wiz-subtitle {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 5px;
+    line-height: 1.5;
+  }
+
+  .wiz-body {
+    padding: 22px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .wiz-field-group {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  .wiz-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .wiz-field--full {
+    grid-column: 1 / -1;
+  }
+
+  .wiz-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-subtle);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  .wiz-input-wrap {
+    position: relative;
+  }
+
+  .wiz-input-icon {
+    position: absolute;
+    left: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-subtle);
+    pointer-events: none;
+    transition: color 0.14s;
+  }
+
+  .wiz-input {
+    width: 100%;
+    padding: 9px 12px 9px 32px;
+    border: 1px solid var(--border-input);
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    font-family: var(--font-mono);
+    color: var(--text);
+    background: var(--bg-input);
+    outline: none;
+    transition: border-color 0.14s, box-shadow 0.14s, background 0.2s;
+  }
+
+  .wiz-input::placeholder {
+    color: var(--text-subtle);
+    font-family: var(--font-mono);
+  }
+
+  .wiz-input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(254,216,93,0.14);
+  }
+
+  .wiz-input:focus + .wiz-input-icon,
+  .wiz-input-wrap:focus-within .wiz-input-icon {
+    color: var(--accent);
+  }
+
+  .wiz-input--no-icon {
+    padding-left: 12px;
+  }
+
+  .wiz-divider {
+    height: 1px;
+    background: var(--border);
+    margin: 4px 0;
+  }
+
+  .wiz-footer {
+    padding: 16px 24px 20px;
+    background: var(--bg-subtle);
+    border-top: 1px solid var(--border);
+    border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    transition: background 0.2s, border-color 0.2s;
+  }
+
+  .wiz-footer-hint {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-subtle);
+    letter-spacing: 0.02em;
+  }
+
+  .wiz-footer-hint span {
+    color: var(--accent);
+  }
+
+  .btn--wiz {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 9px 18px;
+    border-radius: var(--radius);
+    font-size: 13px;
+    font-weight: 600;
+    font-family: var(--font-mono);
+    letter-spacing: 0.01em;
+    cursor: pointer;
+    transition: all 0.14s;
+    border: 1px solid transparent;
+    background: var(--accent);
+    color: #1a1a0a;
+    box-shadow: 0 1px 4px rgba(254,216,93,0.3);
+  }
+  .btn--wiz:hover {
+    filter: brightness(1.07);
+    box-shadow: 0 2px 10px rgba(254,216,93,0.4);
+  }
+  .btn--wiz:active {
+    transform: scale(0.98);
+  }
+
+  /* ── Result panel ──────────────────────────────────────────────────── */
+  .wiz-result {
+    margin-top: 16px;
+    animation: fade-up 0.22s var(--ease-out) both;
+  }
+
+  .wiz-result-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    box-shadow: var(--shadow-sm);
+  }
+
+  .wiz-result-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 16px;
+    background: var(--bg-subtle);
+    border-bottom: 1px solid var(--border);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-subtle);
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    transition: background 0.2s, border-color 0.2s;
+  }
+
+  .wiz-result-body {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 1.7;
+    padding: 14px 16px;
+    color: var(--log-text);
+    background: var(--bg-log);
+    white-space: pre-wrap;
+    word-break: break-all;
+    max-height: 320px;
+    overflow-y: auto;
+    transition: background 0.2s;
+  }
+
+  .wiz-result-body::-webkit-scrollbar { width: 4px; }
+  .wiz-result-body::-webkit-scrollbar-track { background: transparent; }
+  .wiz-result-body::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 2px; }
+
+  /* ── Hexagon decoration ────────────────────────────────────────────── */
+  .wiz-nodes-art {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+    margin-bottom: 20px;
+    animation: fade-up 0.2s var(--ease-out) both;
+  }
+
+  .wiz-node-hex {
+    width: 9px;
+    height: 9px;
+    background: var(--border);
+    clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+    transition: background 0.3s;
+  }
+
+  .wiz-node-hex--active {
+    background: var(--accent);
+  }
+
+  .wiz-node-hex--semi {
+    background: var(--accent-border);
+  }
+</style>
+
 <div class="page-header">
   <div class="page-header-left">
-    <h1 class="page-title">Wizard</h1>
-    <p class="page-subtitle">Bootstrap a new worker node into the hive</p>
+    <h1 class="page-title">Node Wizard</h1>
+    <p class="page-subtitle">Bootstrap a new worker into the hive cluster</p>
   </div>
 </div>
 
 <div id="flash" class="flash-area" aria-live="polite"></div>
 
-<div class="card" style="max-width:560px;">
-  <form
-    id="wizard-form"
-    hx-post="/dashboard/wizard"
-    hx-target="#wizard-result"
-    hx-swap="innerHTML"
-    hx-indicator="#wizard-spinner"
-  >
-    <div class="modal-body" style="padding:20px 24px;">
+<div class="wiz-wrap">
 
-      <div class="form-row">
-        <div class="form-group">
-          <label class="form-label" for="wiz-ip">Server IP</label>
-          <input type="text" id="wiz-ip" name="ip" class="form-input" placeholder="192.168.1.100" required autocomplete="off" />
+  <div class="wiz-eyebrow">
+    <div class="wiz-eyebrow-line"></div>
+    <span class="wiz-eyebrow-label">ssh provisioning</span>
+    <div class="wiz-eyebrow-line" style="background: linear-gradient(to left, var(--accent), transparent);"></div>
+  </div>
+
+  <div class="wiz-nodes-art">
+    <div class="wiz-node-hex wiz-node-hex--active"></div>
+    <div class="wiz-node-hex wiz-node-hex--active"></div>
+    <div class="wiz-node-hex wiz-node-hex--semi"></div>
+    <div class="wiz-node-hex"></div>
+    <div class="wiz-node-hex"></div>
+    <div class="wiz-node-hex"></div>
+    <div class="wiz-node-hex"></div>
+  </div>
+
+  <div class="wiz-card">
+    <div class="wiz-header">
+      <div class="wiz-title">
+        <div class="wiz-title-icon">
+          <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+            <rect x="1" y="1" width="4" height="4" rx="1" stroke="currentColor" stroke-width="1.2"/>
+            <rect x="8" y="1" width="4" height="4" rx="1" stroke="currentColor" stroke-width="1.2"/>
+            <rect x="1" y="8" width="4" height="4" rx="1" stroke="currentColor" stroke-width="1.2"/>
+            <path d="M8 10h4M10 8v4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+          </svg>
         </div>
-        <div class="form-group">
-          <label class="form-label" for="wiz-port">SSH Port</label>
-          <input type="number" id="wiz-port" name="port" class="form-input" value="22" required />
-        </div>
+        Add Worker Node
       </div>
-
-      <div class="form-row">
-        <div class="form-group">
-          <label class="form-label" for="wiz-user">Username</label>
-          <input type="text" id="wiz-user" name="username" class="form-input" placeholder="root" required autocomplete="off" />
-        </div>
-        <div class="form-group">
-          <label class="form-label" for="wiz-pass">Password</label>
-          <input type="password" id="wiz-pass" name="password" class="form-input" placeholder="••••••••" required />
-        </div>
-      </div>
-
-
+      <p class="wiz-subtitle">Connect to a remote server over SSH and install the hive agent. The node will join your cluster automatically.</p>
     </div>
 
-    <div class="modal-footer" style="padding:16px 24px;">
-      <button type="submit" class="btn btn--primary">
-        <span>Bootstrap Node</span>
-        <svg id="wizard-spinner" class="spin htmx-indicator" width="13" height="13" viewBox="0 0 13 13" fill="none">
-          <path d="M6.5 1A5.5 5.5 0 1 0 12 6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-        </svg>
-      </button>
-    </div>
-  </form>
+    <form
+      id="wizard-form"
+      hx-post="/dashboard/wizard"
+      hx-target="#wizard-result"
+      hx-swap="innerHTML"
+      hx-indicator="#wizard-spinner"
+    >
+      <div class="wiz-body">
+
+        <div class="wiz-field-group">
+          <div class="wiz-field">
+            <label class="wiz-label" for="wiz-ip">Server IP</label>
+            <div class="wiz-input-wrap">
+              <input type="text" id="wiz-ip" name="ip" class="wiz-input" placeholder="192.168.1.100" required autocomplete="off" />
+              <svg class="wiz-input-icon" width="14" height="14" viewBox="0 0 14 14" fill="none">
+                <circle cx="7" cy="7" r="5.5" stroke="currentColor" stroke-width="1.2"/>
+                <circle cx="7" cy="7" r="2" stroke="currentColor" stroke-width="1.2"/>
+                <path d="M7 1.5V4M7 10v2.5M1.5 7H4M10 7h2.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+              </svg>
+            </div>
+          </div>
+          <div class="wiz-field">
+            <label class="wiz-label" for="wiz-port">SSH Port</label>
+            <div class="wiz-input-wrap">
+              <input type="number" id="wiz-port" name="port" class="wiz-input" value="22" required />
+              <svg class="wiz-input-icon" width="14" height="14" viewBox="0 0 14 14" fill="none">
+                <rect x="1.5" y="4" width="11" height="7.5" rx="1.2" stroke="currentColor" stroke-width="1.2"/>
+                <path d="M4.5 4V3a2.5 2.5 0 0 1 5 0v1" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+                <circle cx="7" cy="7.5" r="1" fill="currentColor"/>
+              </svg>
+            </div>
+          </div>
+        </div>
+
+        <div class="wiz-divider"></div>
+
+        <div class="wiz-field-group">
+          <div class="wiz-field">
+            <label class="wiz-label" for="wiz-user">Username</label>
+            <div class="wiz-input-wrap">
+              <input type="text" id="wiz-user" name="username" class="wiz-input" placeholder="root" required autocomplete="off" />
+              <svg class="wiz-input-icon" width="14" height="14" viewBox="0 0 14 14" fill="none">
+                <circle cx="7" cy="5" r="2.5" stroke="currentColor" stroke-width="1.2"/>
+                <path d="M2 12c0-2.76 2.24-5 5-5s5 2.24 5 5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+              </svg>
+            </div>
+          </div>
+          <div class="wiz-field">
+            <label class="wiz-label" for="wiz-pass">Password</label>
+            <div class="wiz-input-wrap">
+              <input type="password" id="wiz-pass" name="password" class="wiz-input" placeholder="••••••••" required />
+              <svg class="wiz-input-icon" width="14" height="14" viewBox="0 0 14 14" fill="none">
+                <rect x="1.5" y="4" width="11" height="7.5" rx="1.2" stroke="currentColor" stroke-width="1.2"/>
+                <path d="M4.5 4V3a2.5 2.5 0 0 1 5 0v1" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+                <circle cx="7" cy="7.5" r="1" fill="currentColor"/>
+              </svg>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="wiz-footer">
+        <span class="wiz-footer-hint">via <span>ssh</span> → k3s join → hive-agent</span>
+        <button type="submit" class="btn--wiz">
+          Bootstrap Node
+          <svg id="wizard-spinner" class="spin htmx-indicator" width="13" height="13" viewBox="0 0 13 13" fill="none">
+            <path d="M6.5 1A5.5 5.5 0 1 0 12 6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+          <svg class="htmx-indicator" id="wizard-spinner-arrow" width="12" height="12" viewBox="0 0 12 12" fill="none" style="display:none;">
+            <path d="M2 6h8M7 3l3 3-3 3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+      </div>
+    </form>
+  </div>
+
+  <div id="wizard-result"></div>
 </div>
-
-<div id="wizard-result" style="margin-top:20px;max-width:560px;"></div>
 {{end}}
