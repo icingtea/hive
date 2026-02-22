@@ -1,0 +1,28 @@
+# Binaries
+hive-orchestrator/cmd/orchestrator/orchestrator
+hive-orchestrator/orchestrator
+hive-mind/cmd/orchestrator/orchestrator
+hive-mind/orchestrator
+
+# Database
+hive-orchestrator/hive.db
+hive-orchestrator/cmd/orchestrator/hive.db
+hive-mind/hive.db
+hive-mind/cmd/orchestrator/hive.db
+
+# Zig build artifacts
+telemetry_microservice/.zig-cache/
+telemetry_microservice/zig-out/
+
+# Go build cache
+*.test
+*.out
+
+# Environment / secrets
+.env
+*.env
+*.yaml.local
+
+# OS
+.DS_Store
+Thumbs.db
