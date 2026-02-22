@@ -15,7 +15,8 @@ type SpawnOptions struct {
 	// NodeCount is the number of schedulable nodes in the cluster, used to set
 	// MinDomains on the TopologySpreadConstraint so every node gets pods before
 	// any node gets a second one.
-	NodeCount int32
+	NodeCount   int32
+	RegistryURL string
 }
 
 // NodeCounter is an optional capability — implementations that can query

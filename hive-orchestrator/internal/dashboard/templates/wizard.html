@@ -1,0 +1,58 @@
+{{define "page-wizard"}}
+<div class="page-header">
+  <div class="page-header-left">
+    <h1 class="page-title">Wizard</h1>
+    <p class="page-subtitle">Bootstrap a new worker node into the hive</p>
+  </div>
+</div>
+
+<div id="flash" class="flash-area" aria-live="polite"></div>
+
+<div class="card" style="max-width:560px;">
+  <form
+    id="wizard-form"
+    hx-post="/dashboard/wizard"
+    hx-target="#wizard-result"
+    hx-swap="innerHTML"
+    hx-indicator="#wizard-spinner"
+  >
+    <div class="modal-body" style="padding:20px 24px;">
+
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" for="wiz-ip">Server IP</label>
+          <input type="text" id="wiz-ip" name="ip" class="form-input" placeholder="192.168.1.100" required autocomplete="off" />
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="wiz-port">SSH Port</label>
+          <input type="number" id="wiz-port" name="port" class="form-input" value="22" required />
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" for="wiz-user">Username</label>
+          <input type="text" id="wiz-user" name="username" class="form-input" placeholder="root" required autocomplete="off" />
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="wiz-pass">Password</label>
+          <input type="password" id="wiz-pass" name="password" class="form-input" placeholder="••••••••" required />
+        </div>
+      </div>
+
+
+    </div>
+
+    <div class="modal-footer" style="padding:16px 24px;">
+      <button type="submit" class="btn btn--primary">
+        <span>Bootstrap Node</span>
+        <svg id="wizard-spinner" class="spin htmx-indicator" width="13" height="13" viewBox="0 0 13 13" fill="none">
+          <path d="M6.5 1A5.5 5.5 0 1 0 12 6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+      </button>
+    </div>
+  </form>
+</div>
+
+<div id="wizard-result" style="margin-top:20px;max-width:560px;"></div>
+{{end}}

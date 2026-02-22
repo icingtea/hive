@@ -41,13 +41,13 @@ type CommLogGetter interface {
 }
 
 type Handler struct {
-	store   registry.Store
-	orch    *orchestrator.Orchestrator
-	podMgr  podmanager.PodManager
-	hb      HeartbeatGetter
-	comms   CommLogGetter
-	log     *slog.Logger
-	tmpl    *template.Template
+	store  registry.Store
+	orch   *orchestrator.Orchestrator
+	podMgr podmanager.PodManager
+	hb     HeartbeatGetter
+	comms  CommLogGetter
+	log    *slog.Logger
+	tmpl   *template.Template
 }
 
 // Mount registers all dashboard routes under /dashboard.
@@ -63,6 +63,8 @@ func Mount(r chi.Router, store registry.Store, orch *orchestrator.Orchestrator, 
 		r.Get("/", h.handleIndex)
 		r.Get("/deployments/{id}", h.handleDeploymentDetail)
 		r.Get("/comms", h.handleCommsPage)
+		r.Get("/wizard", h.handleWizardPage)
+		r.Post("/wizard", h.handleWizardSubmit)
 
 		// HTMX partials
 		r.Get("/partials/deployments", h.handlePartialDeployments)
@@ -695,6 +697,58 @@ func validateGitHubRepo(repoURL, branch string) error {
 		return fmt.Errorf("repo is missing requirements.txt at the root")
 	}
 	return nil
+}
+
+// ── Wizard ────────────────────────────────────────────────────────────────────
+
+func (h *Handler) handleWizardPage(w http.ResponseWriter, r *http.Request) {
+	h.renderPage(w, "Wizard", "wizard", "page-wizard", nil, 0)
+}
+
+func (h *Handler) handleWizardSubmit(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		fmt.Fprintf(w, `<div class="flash flash--error">Invalid form data.</div>`)
+		return
+	}
+
+	payload := map[string]any{
+		"ip":       r.FormValue("ip"),
+		"username": r.FormValue("username"),
+		"password": r.FormValue("password"),
+		"port":     r.FormValue("port"),
+		"git":      "https://github.com/Samsyet/identity-agent",
+		"pyfile":   "agent.py",
+		"workerid": "worker-67",
+	}
+	body, _ := json.Marshal(payload)
+
+	resp, err := http.Post("http://142.93.222.37:8000/api/bootstrap", "application/json", bytes.NewReader(body))
+	if err != nil {
+		fmt.Fprintf(w, `<div class="flash flash--error">Could not reach hive-pollinate: %s</div>`, template.HTMLEscapeString(err.Error()))
+		return
+	}
+	defer resp.Body.Close()
+
+	var result map[string]any
+	json.NewDecoder(resp.Body).Decode(&result)
+
+	if resp.StatusCode != http.StatusOK {
+		detail, _ := result["detail"].(string)
+		fmt.Fprintf(w, `<div class="flash flash--error">Bootstrap failed: %s</div>`, template.HTMLEscapeString(detail))
+		return
+	}
+
+	stdout, _ := result["stdout"].(string)
+	stderr, _ := result["stderr"].(string)
+
+	w.Header().Set("Content-Type", "text/html")
+	fmt.Fprintf(w, `<div class="flash flash--success">Node bootstrapped successfully.</div>`)
+	if stdout != "" {
+		fmt.Fprintf(w, `<div class="card" style="margin-top:12px;"><pre class="mono text-xs" style="padding:16px;white-space:pre-wrap;overflow:auto;max-height:300px;">%s</pre></div>`, template.HTMLEscapeString(stdout))
+	}
+	if stderr != "" {
+		fmt.Fprintf(w, `<div class="card" style="margin-top:8px;border-color:var(--red-muted);"><pre class="mono text-xs" style="padding:16px;white-space:pre-wrap;overflow:auto;max-height:200px;color:var(--red);">%s</pre></div>`, template.HTMLEscapeString(stderr))
+	}
 }
 
 // ensure logbuf is referenced

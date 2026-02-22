@@ -26,6 +26,7 @@
       <div class="nav-links">
         <a href="/dashboard" class="nav-link {{if eq .Page "dashboard"}}active{{end}}">Instances</a>
         <a href="/dashboard/comms" class="nav-link {{if eq .Page "comms"}}active{{end}}">Communications</a>
+        <a href="/dashboard/wizard" class="nav-link {{if eq .Page "wizard"}}active{{end}}">Wizard</a>
       </div>
       <div class="nav-right">
         <span class="mono text-xs text-muted nav-run-count" id="nav-run-count" hx-get="/dashboard/partials/running-count" hx-trigger="every 5s" hx-swap="outerHTML">{{.RunningCount}} running</span>
